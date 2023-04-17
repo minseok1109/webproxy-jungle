@@ -53,8 +53,9 @@ void doit(int fd)
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char filename[MAXLINE], cgiargs[MAXLINE];
   rio_t rio;
+
   // 요청을 읽고 분석
-  Rio_readinitb(&rio, fd);
+  Rio_readinitb(&rio, fd); // fd에서 rio로 정보를 넘겨줌
   Rio_readlineb(&rio, buf, MAXLINE);
   printf("Request headers:\n");
   printf("%s", buf);
@@ -170,20 +171,35 @@ void serve_static(int fd, char *filename, int filesize)
   int srcfd;
   char *srcp, filetype[MAXLINE], buf[MAXLINE];
   get_filetype(filename, filetype);
-  sprintf(buf, "HTTP/1.0 200 OK\r\n");
-  sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
-  sprintf(buf, "%sConnection: close\r\n", buf);
-  sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-  sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-  Rio_writen(fd, buf, strlen(buf));
-  printf("Response headers:\n");
-  printf("%s", buf);
 
-  srcfd = Open(filename, O_RDONLY, 0);
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+  // 메모리 할당 및 버퍼 초기화
+  char *header_buf = malloc(MAXLINE * sizeof(char));
+  memset(header_buf, 0, MAXLINE);
+
+  // HTTP 응답 헤더 생성
+  sprintf(header_buf, "HTTP/1.0 200 OK\r\n");
+  sprintf(header_buf, "%sServer: Tiny Web Server\r\n", header_buf);
+  sprintf(header_buf, "%sConnection: close\r\n", header_buf);
+  sprintf(header_buf, "%sContent-length: %d\r\n", header_buf, filesize);
+  sprintf(header_buf, "%sContent-type: %s\r\n\r\n", header_buf, filetype);
+
+  // HTTP 응답 헤더 전송
+  Rio_writen(fd, header_buf, strlen(header_buf));
+  printf("Response headers:\n");
+  printf("%s", header_buf);
+
+  // 파일 데이터 읽기
+  srcfd = Open(filename, O_RDONLY, 0); // 서버에 있는 파일 정보를 읽어서
+  srcp = malloc(filesize);             // 파일 사이즈만큼 메모리 할당
+  rio_readn(srcfd, srcp, filesize);    // 읽은 fd를 버퍼인 scrp에 넣어주기
   Close(srcfd);
-  Rio_writen(fd, srcp, filesize);
-  Munmap(srcp, filesize);
+
+  // 파일 데이터 전송
+  Rio_writen(fd, srcp, filesize); // 버퍼 내용을 fd에 다시 쓰기
+
+  // 메모리 할당 해제
+  free(header_buf);
+  free(srcp);
 }
 
 void get_filetype(char *filename, char *filetype)
