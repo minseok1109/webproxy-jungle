@@ -20,41 +20,49 @@ void proxy(int connfd);
 void parse_uri(char *uri, char *hostname, char *path, int *port);
 void make_header(char *final_header, char *hostname, char *path, rio_t *client_rio);
 
+void *thread(void *vargp);
+
 int main(int argc, char **argv)
 {
-  /*
-  1. connfd의 내용을 읽어서
-  2. 알맞은 요청인지 확인 후 (Client_error)
-  3. 내용을 읽은 다음에
-  4. 새로운 fd를 만들어서 연결 시킨 후에 내용을 써서
-  5. server에서 요청을 읽고 Response 전달
-  */
 
-  int listenfd, connfd;
+  int listenfd;
+  int *connfd;
   char hostname[MAXLINE], port[MAXLINE];
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
+  pthread_t tid;
 
   /* Check command line args */
   if (argc != 2)
   {
     fprintf(stderr, "usage: %s <port>\n", argv[0]);
-    exit(1);
+    exit(0);
   }
 
   listenfd = Open_listenfd(argv[1]);
+
   while (1)
   {
     clientlen = sizeof(clientaddr);
-    connfd = Accept(listenfd, (SA *)&clientaddr,
-                    &clientlen);
+
+    connfd = Malloc(sizeof(int));
+    *connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
     Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE,
                 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
-    proxy(connfd);
-    Close(connfd);
+    Pthread_create(&tid, NULL, thread, connfd);
   }
   return 0;
+}
+
+void *thread(void *vargp)
+{
+  int connfd = *((int *)vargp);
+  Pthread_detach(pthread_self());
+  Free(vargp);
+  proxy(connfd);
+  Close(connfd);
+  return NULL;
 }
 
 void proxy(int connfd)
